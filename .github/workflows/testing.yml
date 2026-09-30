@@ -1,0 +1,85 @@
+name: Testing Pipeline
+
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   branches:
+  #     - main
+  # push:
+  #   branches:
+  #     - main
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: kaalu/pipelineboss
+
+jobs:
+  pr-checks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps
+
+      - name: Run unit / Playwright tests
+        run: python -m pytest tests/
+
+      - name: Build image (build-only, not pushed)
+        run: docker build -t my-app:pr-check .
+
+  build-and-scan:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image
+        id: image
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ steps.image.outputs.image }} .
+
+      - name: Push image
+        run: |
+          docker push ${{ steps.image.outputs.image }}
+
+      - name: Trivy Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.image.outputs.image }}
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+  deploy-app:
+    needs: build-and-scan
+    uses: ./.github/workflows/total-deploy.yml
+    with:
+      image: ${{ needs.build-and-scan.outputs.image }}
+    secrets: inherit

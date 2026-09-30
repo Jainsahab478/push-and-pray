@@ -1,0 +1,135 @@
+name: Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Full image URI to deploy (already built and pushed)"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      image:
+        description: "Full image URI to deploy (already built and pushed)"
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ap-south-1
+  ECS_CLUSTER: my-app-cluster
+  DEV_ECS_SERVICE: my-app-dev
+  QA_ECS_SERVICE: my-app-qa
+  STAGING_ECS_SERVICE: my-app-staging
+  PROD_ECS_SERVICE: my-app-prod
+  CONTAINER_NAME: my-app
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # No "Set image" step needed anymore — the image was already
+      # built and pushed by Testing Pipeline; we just use it as-is
+      - name: Render task definition
+        id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/ecs-task-definition-dev.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ inputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          service: ${{ env.DEV_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Dev tests
+        run: |
+          chmod +x tests/test_dev.sh
+          BASE_URL=https://dev.example.com ./tests/test_dev.sh
+
+  deploy-qa:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render task definition
+        id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/ecs-task-definition-qa.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ inputs.image }}
+
+      - name: Deploy to QA ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          service: ${{ env.QA_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: QA tests
+        run: |
+          chmod +x tests/test_qa.sh
+          BASE_URL=https://qa.example.com ./tests/test_qa.sh
+
+  deploy-staging:
+    needs: deploy-qa
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render task definition
+        id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/ecs-task-definition-staging.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ inputs.image }}
+
+      - name: Deploy to Staging
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          service: ${{ env.STAGING_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Staging tests
+        run: |
+          chmod +x tests/test_staging.sh
+          BASE_URL=https://staging.example.com ./tests/test_staging.sh
+
+  promote:
+    needs: deploy-staging
+    uses: ./.github/workflows/promote-to-prod.yml
+    with:
+      image: ${{ inputs.image }}
+    secrets: inherit

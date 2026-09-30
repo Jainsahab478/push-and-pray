@@ -1,0 +1,46 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# --- pytest / Playwright ---
+.pytest_cache/
+report/
+playwright-report/
+test-results/
+
+# --- Flask ---
+instance/
+*.db
+*.sqlite3
+
+# --- Docker ---
+*.pid
+
+# --- Environment / secrets ---
+.env
+.env.*
+*.pem
+*.key
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log

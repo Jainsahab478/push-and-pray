@@ -5,28 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sample Web Application</title>
     <style>
-        button {
-            background-color: rgb(158, 94, 203);
-            color: white;
-            padding: 20px 60px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
+        :root {
+            --bg: #0f1115;
+            --card: #1a1d24;
+            --text: #e6e8eb;
+            --muted: #9aa1ac;
+            --accent: #6ee7b7;
+            --accent-hover: #34d399;
         }
-        </style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem 1rem;
+        }
+
+        .card {
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+            background: var(--card);
+            border-radius: 16px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        p {
+            line-height: 1.7;
+            color: var(--muted);
+            font-size: 1.05rem;
+            margin-top: 0;
+            margin-bottom: 2rem;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: #0f1115;
+            font-weight: 700;
+            font-size: 1rem;
+            padding: 0.9rem 2.5rem;
+            border: none;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.15s ease;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+    </style>
 </head>
 <body>
-    <div>
-        Click the button below to know more!
-    </div>
-        
-    
-    <div>
+    <div class="card">
+        <p>Click the button below to know more!</p>
         <form action="/about" method="get">
-        <button type="submit">
-            Click Me!
-        </button>
-          </form>  
+            <button type="submit">Click Me!</button>
+        </form>
     </div>
 </body>
 </html>

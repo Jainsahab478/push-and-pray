@@ -1,0 +1,86 @@
+name: Promote to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Image URI that already passed dev, qa, and staging"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      image:
+        description: "Image URI that already passed dev, qa, and staging"
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ap-south-1
+  ECS_CLUSTER: pipeline-boss-project
+  PROD_ECS_SERVICE: my-app-prod
+  CONTAINER_NAME: my-app
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Playwright
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps
+
+      - name: Run Playwright tests against staging
+        env:
+          BASE_URL: https://staging.example.com
+        run: python -m pytest tests/ -v --html=report/report.html --self-contained-html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: report/
+          retention-days: 14
+
+  deploy-prod:
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render task definition
+        id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/ecs-task-definition-prod.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ inputs.image }}
+
+      - name: Deploy to Prod ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          service: ${{ env.PROD_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Prod tests
+        run: |
+          chmod +x tests/test_prod.sh
+          BASE_URL=https://prod.example.com ./tests/test_prod.sh
